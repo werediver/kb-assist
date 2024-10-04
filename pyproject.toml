@@ -1,0 +1,9 @@
+[project]
+name = "kb-assist"
+version = "0.1.0"
+description = "Personal knowledge base assistant"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pygit2>=1.15.1",
+]
