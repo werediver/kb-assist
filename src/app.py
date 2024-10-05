@@ -19,7 +19,7 @@ def main():
     repo = git.Repository(kb_dir)
     rev = repo.revparse_single("HEAD")
     assert isinstance(rev, git.Commit)
-    # for f in walk_rev_tree(repo, rev, kb_filter):
+    # for f in walk_tree(repo, rev.tree, kb_filter):
     #     print(f"{f}")
     scan_commits(repo, rev.id)
 
@@ -51,10 +51,10 @@ def scan_kb(kb_dir: Path, filter: Callable[[Path], bool] | None = None) -> Itera
                     dirs.append(f)
 
 
-def walk_rev_tree(
-    repo: git.Repository, rev: git.Commit, filter: Callable[[Path], bool] | None = None
+def walk_tree(
+    repo: git.Repository, tree: git.Tree, filter: Callable[[Path], bool] | None = None
 ) -> Iterable:
-    entries = [(rev.tree, Path(repo.workdir))]
+    entries = [(tree, Path())]
     while entries:
         tree, path = entries.pop(0)
         for obj in tree:
@@ -72,8 +72,15 @@ def scan_commits(repo: git.Repository, oid: git.Oid):
         if len(commit.parents) == 1:
             print(f"\n{commit.message}")
             diff = commit.parents[0].tree.diff_to_tree(commit.tree)
+            diff.find_similar()  # Find renames and more
             for patch in diff:
-                print(f"{patch.delta.status_char()} {patch.delta.new_file.path}")
+                if patch.delta.old_file.path != patch.delta.new_file.path:
+                    print(
+                        f"{patch.delta.status_char()} "
+                        f"{patch.delta.old_file.path} => {patch.delta.new_file.path} ({patch.delta.similarity}%)"
+                    )
+                else:
+                    print(f"{patch.delta.status_char()} {patch.delta.new_file.path}")
 
 
 if __name__ == "__main__":
