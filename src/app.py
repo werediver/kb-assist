@@ -20,10 +20,8 @@ def main():
     # obj = repo.revparse_single("HEAD")
     obj = repo.get(repo.head.target)
     assert isinstance(obj, git.Commit)
-    # for f in walk_tree(repo, obj.tree, kb_filter):
-    #     print(f"{f}")
-    # scan_commits_x(repo, obj.id, kb_filter)
-    rank_objects(
+
+    chart = rank_objects(
         repo,
         obj.id,
         depth_limit=args.depth,
@@ -31,6 +29,9 @@ def main():
         path_filter=path_filter,
         b=args.b,
     )
+
+    for name, score in chart:
+        print(f"{name} ({score:.3f})")
 
 
 def parse_args():
@@ -87,7 +88,7 @@ def rank_objects(
     top: int,
     path_filter: Callable[[Path], bool] | None = None,
     b: float = 0.0,
-):
+) -> list[tuple[str, float]]:
     bonus_delta_status = [
         git.GIT_DELTA_ADDED,
         git.GIT_DELTA_COPIED,
@@ -130,12 +131,14 @@ def rank_objects(
             # Count only the analyzed commits.
             depth += 1
 
-    chart = sorted(scores.items(), key=lambda entry: entry[1], reverse=True)
-    if path_filter is not None:
-        chart = [(name, score) for name, score in chart if path_filter(Path(name))]
+    chart = (
+        scores.items()
+        if path_filter is None
+        else filter(lambda entry: path_filter(Path(entry[0])), scores.items())
+    )
+    chart = sorted(chart, key=lambda entry: entry[1], reverse=True)[:top]
 
-    for name, score in chart[:top]:
-        print(f"{name} ({score:.3f})")
+    return chart
 
 
 if __name__ == "__main__":
