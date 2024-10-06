@@ -51,6 +51,9 @@ def parse_args():
         help="Values greater than zero make the weight of older changes decline slower (the weight of a change is computed as 1/(depth + b)).",
     )
     args = p.parse_args()
+
+    assert args.depth >= args.b, "Depth is expected to be multiple times larger than b."
+
     return args
 
 
@@ -63,52 +66,18 @@ def make_kb_filter(suffixes: list[str] | None) -> bool:
     return kb_filter
 
 
-def scan_kb(kb_dir: Path, filter: Callable[[Path], bool] | None = None) -> Iterable:
+def scan_kb(
+    kb_dir: Path, path_filter: Callable[[Path], bool] | None = None
+) -> Iterable:
     dirs = [kb_dir]
     while dirs:
         d = dirs.pop(0)
         for f in d.iterdir():
-            if filter is None or filter(f):
+            if path_filter is None or path_filter(f):
                 if f.is_file():
                     yield f
                 elif f.is_dir():
                     dirs.append(f)
-
-
-def walk_tree(
-    repo: git.Repository, tree: git.Tree, filter: Callable[[Path], bool] | None = None
-) -> Iterable:
-    entries = [(tree, Path())]
-    while entries:
-        tree, path = entries.pop(0)
-        for obj in tree:
-            obj_path = path.joinpath(obj.name)
-            if filter is None or filter(obj_path):
-                if obj.type == git.GIT_OBJECT_TREE:
-                    obj_tree = repo.get(obj.id)
-                    entries.append((obj_tree, obj_path))
-                elif obj.type == git.GIT_OBJECT_BLOB:
-                    yield path.joinpath(obj.name)
-
-
-def scan_commits(repo: git.Repository, oid: git.Oid):
-    for commit in repo.walk(oid, git.GIT_SORT_TOPOLOGICAL | git.GIT_SORT_TIME):
-        # Ignore merge commits.
-        # The root commit is also ignored, though it may be worth taking into account.
-        if len(commit.parents) == 1:
-            print(f"\n{commit.message}")
-            diff = commit.parents[0].tree.diff_to_tree(commit.tree)
-            diff.find_similar()  # Find renames and more
-            for patch in diff:
-                fields = []
-                fields.append(patch.delta.status_char())
-                if patch.delta.old_file.path != patch.delta.new_file.path:
-                    fields.append(f"{patch.delta.old_file.path}")
-                    fields.append("=>")
-                fields.append(patch.delta.new_file.path)
-                if patch.delta.old_file.path != patch.delta.new_file.path:
-                    fields.append(f"({patch.delta.similarity}%)")
-                print(" ".join(fields))
 
 
 def rank_objects(
@@ -125,8 +94,9 @@ def rank_objects(
         git.GIT_DELTA_MODIFIED,
         git.GIT_DELTA_RENAMED,
     ]
+    assert git.GIT_DELTA_DELETED not in bonus_delta_status
 
-    chgs = dict[str, float]()
+    scores = dict[str, float]()
     deleted = set[str]()
     renamed = dict[str, str]()  # old -> new
 
@@ -141,6 +111,7 @@ def rank_objects(
             break
 
         bonus = 1 / (depth + b)
+
         # Ignore merge commits.
         # The root commit is also ignored, though it may be worth taking into account.
         if len(commit.parents) == 1:
@@ -152,13 +123,14 @@ def rank_objects(
                 name = apply_future_renames(patch.delta.new_file.path)
                 if name not in deleted:
                     if patch.delta.status in bonus_delta_status:
-                        chgs[name] = chgs.get(name, 0.0) + bonus
+                        scores[name] = scores.get(name, 0.0) + bonus
                     elif patch.delta.status == git.GIT_DELTA_DELETED:
                         deleted.add(patch.delta.old_file.path)
+
             # Count only the analyzed commits.
             depth += 1
 
-    chart = sorted(chgs.items(), key=lambda entry: entry[1], reverse=True)
+    chart = sorted(scores.items(), key=lambda entry: entry[1], reverse=True)
     if path_filter is not None:
         chart = [(name, score) for name, score in chart if path_filter(Path(name))]
 
