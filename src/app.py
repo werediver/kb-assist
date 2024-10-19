@@ -3,6 +3,7 @@ from typing import Callable
 
 import pygit2 as git
 
+from md_utils import get_tag_line_tags
 from parse_args import parse_args
 from scan_git import rank_objects
 from assist import Assist
@@ -36,9 +37,22 @@ def main():
         print(f"{name} ({score:.3f})")
 
     assist = Assist()
+    repo_path = Path(repo.workdir)
     for name, _ in chart:
+        path = repo_path.joinpath(name)
+        text = path.read_text()
+        tag_line_tags = list(get_tag_line_tags(text))
+        if _TAG_IGNORE in tag_line_tags:
+            continue
         print(f"\n- {name}")
-        assist.ponder(Path(repo.workdir).joinpath(name))
+        if _TAG_ARTICLE in tag_line_tags:
+            # assist.assess_subject_consistency(text)
+            assist.assess_article_quality(text)
+
+
+_TAG_PREFIX = "assist-"
+_TAG_IGNORE = _TAG_PREFIX + "ignore"
+_TAG_ARTICLE = _TAG_PREFIX + "article"
 
 
 def make_kb_filter(
