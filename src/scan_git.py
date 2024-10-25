@@ -10,6 +10,7 @@ def rank_objects(
     depth_limit: int,
     top: int,
     path_filter: Callable[[Path], bool] | None = None,
+    path_map: Callable[[Path], str | None] | None = None,
     b: float = 0.0,
 ) -> list[tuple[str, float]]:
     bonus_delta_status = [
@@ -45,20 +46,19 @@ def rank_objects(
                 if patch.delta.status == git.GIT_DELTA_RENAMED:
                     renamed[patch.delta.old_file.path] = patch.delta.new_file.path
                 name = apply_future_renames(patch.delta.new_file.path)
-                if name not in deleted:
-                    if patch.delta.status in bonus_delta_status:
-                        scores[name] = scores.get(name, 0.0) + bonus
-                    elif patch.delta.status == git.GIT_DELTA_DELETED:
-                        deleted.add(patch.delta.old_file.path)
+                # Apply the filter to the most recent object name.
+                if path_filter is None or path_filter(Path(name)):
+                    if name not in deleted:
+                        if patch.delta.status in bonus_delta_status:
+                            key = path_map(Path(name)) if path_map else name
+                            if key:
+                                scores[key] = scores.get(key, 0.0) + bonus
+                        elif patch.delta.status == git.GIT_DELTA_DELETED:
+                            deleted.add(patch.delta.old_file.path)
 
             # Count only the analyzed commits.
             depth += 1
 
-    chart = (
-        scores.items()
-        if path_filter is None
-        else filter(lambda entry: path_filter(Path(entry[0])), scores.items())
-    )
-    chart = sorted(chart, key=lambda entry: entry[1], reverse=True)[:top]
+    chart = sorted(scores.items(), key=lambda entry: entry[1], reverse=True)[:top]
 
     return chart

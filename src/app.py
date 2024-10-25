@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 from typing import Callable
 
 import pygit2 as git
@@ -29,6 +30,7 @@ def main():
         depth_limit=args.depth,
         top=args.top,
         path_filter=path_filter,
+        # path_map=dart_pkg_path,
         b=args.b,
     )
 
@@ -67,6 +69,24 @@ def make_kb_filter(
 
     return kb_filter
 
+
+def dart_pkg_path(p: Path) -> str | None:
+    """
+    >>> dart_pkg_path(Path('pkgs/utils/lib/src/misc.dart'))
+    'pkgs/utils'
+    >>> dart_pkg_path(Path('pkgs/utils/lib/utils.dart'))
+    'pkgs/utils'
+    >>> dart_pkg_path(Path('pkgs/utils/pubspec.yaml'))
+    'pkgs/utils'
+    """
+
+    m = _DART_PKG_RE.match(str(p))
+    if m:
+        return m.group(1)
+    return None
+
+
+_DART_PKG_RE = re.compile(r"^(.*?)/(bin|lib|test|[^/]*$)")
 
 if __name__ == "__main__":
     main()
